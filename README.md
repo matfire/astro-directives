@@ -29,6 +29,7 @@ export default defineConfig({
   },
   integrations: [
     astroDirectives({
+      // throwOnUnknownDirectives: false, // Leave unknown directives untouched.
       components: {
         callout: "./src/components/Callout.astro",
         youtube: "./src/components/Youtube.astro",
@@ -54,7 +55,9 @@ This **Markdown** becomes the component's default slot.
 Text with an :badge[inline component]{tone="positive"}.
 ```
 
-Attribute values remain strings. Bare attributes become `true`, and `{#id}` / `{.class}` shorthand is passed as `id` / `class` props. Unregistered directive names fail the build with their Markdown location.
+Attribute values remain strings. Bare attributes become `true`, and `{#id}` / `{.class}` shorthand is passed as `id` / `class` props.
+
+Unregistered directive names fail the build with their Markdown location by default. Set `throwOnUnknownDirectives: false` to leave unknown directive nodes untouched. This integration does not render unknown directives itself.
 
 This initial release supports deferred `.md` content collection rendering. Markdown pages and direct `.md` imports are not part of the supported API.
 
@@ -68,7 +71,12 @@ import createAstroDirectivesPlugin from "@matfire/astro-directives/satteri";
 
 const result = await markdownToHtml(source, {
   features: { directive: true },
-  mdastPlugins: [createAstroDirectivesPlugin({ directives: ["callout", "youtube"] })],
+  mdastPlugins: [
+    createAstroDirectivesPlugin({
+      directives: ["callout", "youtube"],
+      throwOnUnknownDirectives: false,
+    }),
+  ],
 });
 ```
 

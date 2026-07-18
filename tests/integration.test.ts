@@ -50,4 +50,13 @@ describe("Astro integration configuration", () => {
       }),
     ).toThrowError(/satteri\(\{ features: \{ directive: true \} \}\)/);
   });
+
+  test("rejects a non-boolean unknown-directive option", () => {
+    expect(() =>
+      astroDirectives({
+        components: {},
+        throwOnUnknownDirectives: "no" as unknown as boolean,
+      }),
+    ).toThrowError(/throwOnUnknownDirectives must be a boolean/);
+  });
 });
