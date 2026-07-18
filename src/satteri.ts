@@ -104,9 +104,61 @@ function hasExplicitAssignment(
   const end = node.position?.end.offset;
   if (start === undefined || end === undefined) return false;
 
-  const source = context.source.slice(start, end);
-  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:^|[\\s{])${escapedName}\\s*=`).test(source);
+  let source = context.source.slice(start, end);
+  if (node.type === "containerDirective") {
+    source = source.split(/\r?\n/, 1)[0] ?? source;
+  }
+
+  let bracketDepth = 0;
+  let inAttributes = false;
+  let quote: "'" | '"' | undefined;
+  let escaped = false;
+
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index]!;
+
+    if (inAttributes) {
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === quote) quote = undefined;
+        continue;
+      }
+
+      if (character === '"' || character === "'") {
+        quote = character;
+        continue;
+      }
+      if (character === "}") {
+        inAttributes = false;
+        continue;
+      }
+
+      const previous = source[index - 1];
+      if ((previous === "{" || /\s/.test(previous ?? "")) && source.startsWith(name, index)) {
+        let assignmentIndex = index + name.length;
+        while (/\s/.test(source[assignmentIndex] ?? "")) assignmentIndex++;
+        if (source[assignmentIndex] === "=") return true;
+      }
+      continue;
+    }
+
+    if (bracketDepth > 0 && character === "\\") {
+      index++;
+      continue;
+    }
+    if (character === "[") {
+      bracketDepth++;
+      continue;
+    }
+    if (character === "]" && bracketDepth > 0) {
+      bracketDepth--;
+      continue;
+    }
+    if (character === "{" && bracketDepth === 0) inAttributes = true;
+  }
+
+  return false;
 }
 
 function directiveError(

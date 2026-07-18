@@ -77,6 +77,36 @@ Before :badge[hot]{tone="positive"} after.`);
     expect(found[0]?.children).toEqual([expect.objectContaining({ type: "html", value: "café" })]);
   });
 
+  test("distinguishes bare attributes from assignments in quoted values", async () => {
+    const found = components(
+      await compile(':badge[text]{title=" disabled=" escaped="say \\" disabled=" disabled}'),
+    );
+
+    expect(found[0]?.directive.props).toEqual({
+      title: " disabled=",
+      escaped: 'say \\" disabled=',
+      disabled: true,
+    });
+  });
+
+  test("ignores assignments in directive labels and container bodies", async () => {
+    const found = components(
+      await compile(`:badge[label disabled=]{disabled}
+
+:::callout{disabled}
+Body containing disabled= text.
+:::`),
+    );
+
+    expect(found.map((item) => item.directive.props.disabled)).toEqual([true, true]);
+  });
+
+  test("preserves explicitly assigned empty attributes with optional spacing", async () => {
+    const found = components(await compile(':badge[text]{first="" second = "" bare}'));
+
+    expect(found[0]?.directive.props).toEqual({ first: "", second: "", bare: true });
+  });
+
   test("keeps adjacent inline directives as separate components", async () => {
     const found = components(await compile(":badge[one]:badge[two]"));
     expect(found.map((item) => item.directive.name)).toEqual(["badge", "badge"]);
