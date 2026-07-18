@@ -1,0 +1,73 @@
+{
+  "name": "@matfire/astro-directives",
+  "version": "0.0.0",
+  "description": "Use Sätteri Markdown directives as Astro components in content collections.",
+  "keywords": [
+    "astro",
+    "content-collections",
+    "directives",
+    "markdown",
+    "satteri"
+  ],
+  "bugs": {
+    "url": "https://github.com/matfire/astro-directives/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Matteo Gassend",
+    "email": "matteo@matteogassend.com",
+    "url": "https://matteogassend.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/matfire/astro-directives"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./satteri": "./dist/satteri.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "lint": "oxlint . --vitest-plugin --deny-warnings",
+    "lint:fix": "oxlint . --vitest-plugin --fix",
+    "format": "oxfmt . --write",
+    "format:check": "oxfmt . --check"
+  },
+  "devDependencies": {
+    "@astrojs/markdown-satteri": "^0.3.4",
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
+    "@types/node": "^26.1.1",
+    "astro": "^7.1.1",
+    "bumpp": "^11.1.0",
+    "oxfmt": "^0.59.0",
+    "oxlint": "^1.74.0",
+    "satteri": "^0.9.1",
+    "tsdown": "^0.22.5",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "@astrojs/markdown-satteri": "^0.3.4",
+    "astro": "^7.1.0",
+    "satteri": "^0.9.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

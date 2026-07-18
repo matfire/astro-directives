@@ -1,0 +1,17 @@
+---
+const { type, bare, id, class: className } = Astro.props
+---
+
+<aside id={id} class:list={['callout', className]} data-type={type} data-bare={String(bare)}>
+  <slot />
+</aside>
+
+<style>
+  .callout {
+    border: 2px solid rgb(255 51 102);
+  }
+</style>
+
+<script>
+  document.documentElement.dataset.fixtureLoaded = 'true'
+</script>

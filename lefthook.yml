@@ -1,0 +1,21 @@
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      run: pnpm format '{staged_files}'
+      stage_fixed: true
+    lint:
+      run: pnpm lint:fix '{staged_files}'
+      stage_fixed: true
+    typecheck:
+      run: pnpm typecheck
+
+pre-push:
+  commands:
+    test:
+      run: bun run test
+
+commit-msg:
+  commands:
+    commitlint:
+      run: bunx commitlint --edit {1}

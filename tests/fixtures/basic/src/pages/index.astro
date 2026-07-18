@@ -1,0 +1,15 @@
+---
+import { getCollection, render } from 'astro:content'
+
+const [post] = await getCollection('posts')
+if (!post) throw new Error('Fixture post was not loaded')
+const { Content, headings } = await render(post)
+---
+
+<!doctype html>
+<html lang="en">
+  <body>
+    <p id="heading-count">{headings.length}</p>
+    <Content />
+  </body>
+</html>
