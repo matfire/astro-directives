@@ -29,6 +29,7 @@
   "type": "module",
   "exports": {
     ".": "./dist/index.mjs",
+    "./runtime": "./dist/runtime.mjs",
     "./satteri": "./dist/satteri.mjs",
     "./package.json": "./package.json"
   },

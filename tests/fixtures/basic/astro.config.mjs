@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "astro/config";
 import { satteri } from "@astrojs/markdown-satteri";
 import { defineMdastPlugin } from "satteri";
@@ -17,6 +19,17 @@ const externalDirective = defineMdastPlugin({
 });
 
 export default defineConfig({
+  vite: {
+    resolve: {
+      alias: {
+        // Generated content modules import the runtime by its published
+        // specifier; the fixture runs against the workspace source instead.
+        "@matfire/astro-directives/runtime": fileURLToPath(
+          new URL("../../../src/runtime.ts", import.meta.url),
+        ),
+      },
+    },
+  },
   markdown: {
     processor: satteri({
       features: { directive: true },
