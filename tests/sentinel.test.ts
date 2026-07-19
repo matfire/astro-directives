@@ -87,5 +87,30 @@ describe("content module code generation", () => {
     expect(code.match(/renderComponent\(result, "callout"/g)).toHaveLength(2);
     expect(code).toContain('renderComponent(result, "notice"');
     expect(code).toContain('"bare":true');
+    expect(code).not.toContain("@matfire/astro-directives/runtime");
+    expect(code).not.toContain("astro:assets");
+  });
+
+  test("wires image resolution through the shared runtime module", () => {
+    const html =
+      '<p><img __ASTRO_IMAGE_="{&quot;src&quot;:&quot;./pixel.svg&quot;,&quot;index&quot;:0}"></p>';
+    const code = generateContentModule({
+      componentImports: {},
+      fileUrl: new URL("file:///project/post.md"),
+      frontmatter: {},
+      headings: [],
+      html,
+      localImagePaths: ["./pixel.svg"],
+      remoteImagePaths: [],
+      segments: [{ type: "html", value: html }],
+    });
+
+    expect(code).toContain('import { resolveImages } from "@matfire/astro-directives/runtime";');
+    expect(code).toContain('import { getImage } from "astro:assets";');
+    expect(code).toContain('import __AstroDirectiveImage0 from "./pixel.svg";');
+    expect(code).toContain('new Map([["./pixel.svg", __AstroDirectiveImage0]])');
+    expect(code).toContain("const __renderedHtml = resolveImages({");
+    expect(code).not.toContain("__decodeImageProps");
+    expect(code).not.toContain("spreadAttributes");
   });
 });
