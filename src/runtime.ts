@@ -35,15 +35,17 @@ interface ImageProps {
 export async function resolveImages(options: ResolveImagesOptions): Promise<string[]> {
   const sources = new Map<string, ResolvedImage>();
 
-  for (const match of options.html.matchAll(IMAGE_PATTERN)) {
-    const props = decodeImageProps(match[1]!);
-    const { src, index, ...rest } = props;
-    const imported = options.localImages.get(src);
-    const image = imported
-      ? await options.getImage({ src: imported, index, ...rest })
-      : await options.getImage({ src, index, ...rest });
-    sources.set(src + "_" + index, image);
-  }
+  await Promise.all(
+    Array.from(options.html.matchAll(IMAGE_PATTERN), async (match) => {
+      const props = decodeImageProps(match[1]!);
+      const { src, index, ...rest } = props;
+      const imported = options.localImages.get(src);
+      const image = imported
+        ? await options.getImage({ src: imported, index, ...rest })
+        : await options.getImage({ src, index, ...rest });
+      sources.set(src + "_" + index, image);
+    }),
+  );
 
   return options.segments.map((segment) =>
     segment.replaceAll(IMAGE_PATTERN, (_full, value: string) => {
@@ -52,10 +54,11 @@ export async function resolveImages(options: ResolveImagesOptions): Promise<stri
       if (!image) {
         throw new Error("Could not resolve optimized Markdown image " + props.src + ".");
       }
+      const resolvedAttributes = { ...image.attributes };
       if (image.srcSet && image.srcSet.values.length > 0) {
-        image.attributes.srcset = image.srcSet.attribute;
+        resolvedAttributes.srcset = image.srcSet.attribute;
       }
-      const { index: _index, ...attributes } = image.attributes;
+      const { index: _index, ...attributes } = resolvedAttributes;
       return String(spreadAttributes({ src: image.src, ...attributes }));
     }),
   );
