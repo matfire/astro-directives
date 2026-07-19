@@ -25,6 +25,7 @@ test("builds deferred Markdown content with Astro components and assets", async 
   );
   expect(index).toContain("<strong>strong Markdown</strong>");
   expect(index).toContain('<mark data-tone="hot">inline</mark>');
+  expect(index).toContain('<span data-external="true">another Sätteri plugin</span>');
   expect(index).toContain('<figure data-video="video-1">Video <em>label</em></figure>');
   expect(index).toContain('class="astro-code');
   expect(index).toMatch(/<img[^>]+alt="Pixel"/);

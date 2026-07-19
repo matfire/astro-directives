@@ -24,6 +24,11 @@ export interface AstroDirectivesOptions {
    * resolved from the Astro project root.
    */
   components: Record<string, string | URL>;
+  /**
+   * Throw when a directive is not registered. Disable this to leave unknown
+   * directive nodes untouched. Defaults to `true`.
+   */
+  throwOnUnknownDirectives?: boolean;
 }
 
 const CONTENT_MODULE_TYPES = `declare module 'astro:content' {
@@ -70,7 +75,10 @@ export function astroDirectives(options: AstroDirectivesOptions): AstroIntegrati
   assertOptions(options);
 
   const componentNames = Object.keys(options.components);
-  const directivePlugin = createAstroDirectivesPlugin({ directives: componentNames });
+  const directivePlugin = createAstroDirectivesPlugin({
+    directives: componentNames,
+    throwOnUnknownDirectives: options.throwOnUnknownDirectives,
+  });
   let resolvedConfig: AstroConfig | undefined;
   let renderer: MarkdownRenderer | undefined;
   let componentImports: Record<string, string> = {};

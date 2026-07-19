@@ -19,6 +19,11 @@ export const PLUGIN_NAME = "@matfire/astro-directives";
 export interface SatteriDirectivesOptions {
   /** Registered directive names. Registry objects use their keys. */
   directives: Iterable<string> | Record<string, unknown>;
+  /**
+   * Throw when a directive is not registered. Disable this to leave unknown
+   * directive nodes untouched. Defaults to `true`.
+   */
+  throwOnUnknownDirectives?: boolean;
 }
 
 type ContainerDirective = Extract<MdastNode, { type: "containerDirective" }>;
@@ -33,11 +38,19 @@ type DirectiveAttributes = NonNullable<ContainerDirective["attributes"]>;
 export function createAstroDirectivesPlugin(
   options: SatteriDirectivesOptions,
 ): MdastPluginDefinition {
+  if (
+    options.throwOnUnknownDirectives !== undefined &&
+    typeof options.throwOnUnknownDirectives !== "boolean"
+  ) {
+    throw new TypeError(`${PLUGIN_NAME}: throwOnUnknownDirectives must be a boolean.`);
+  }
+
   const names = new Set(
     Symbol.iterator in Object(options.directives)
       ? [...(options.directives as Iterable<string>)]
       : Object.keys(options.directives as Record<string, unknown>),
   );
+  const throwOnUnknownDirectives = options.throwOnUnknownDirectives ?? true;
 
   const transform = (
     node: Readonly<ContainerDirective | LeafDirective | TextDirective>,
@@ -45,7 +58,8 @@ export function createAstroDirectivesPlugin(
     kind: DirectiveKind,
   ) => {
     if (!names.has(node.name)) {
-      throw directiveError(node, context);
+      if (throwOnUnknownDirectives) throw directiveError(node, context);
+      return;
     }
 
     context.setProperty(node, "data", {

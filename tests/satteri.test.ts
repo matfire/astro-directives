@@ -1,4 +1,4 @@
-import { markdownToHtml } from "satteri";
+import { defineMdastPlugin, markdownToHtml, type MdastPluginDefinition } from "satteri";
 import { describe, expect, test } from "vitest";
 
 import { createAstroDirectivesPlugin } from "../src/satteri.js";
@@ -12,10 +12,13 @@ const directives = createAstroDirectivesPlugin({
   directives: ["callout", "youtube", "badge"],
 });
 
-async function compile(markdown: string): Promise<Segment[]> {
+async function compile(
+  markdown: string,
+  mdastPlugins: MdastPluginDefinition[] = [directives],
+): Promise<Segment[]> {
   const result = await markdownToHtml(markdown, {
     features: { directive: true },
-    mdastPlugins: [directives],
+    mdastPlugins,
     fileURL: new URL("file:///project/src/content/post.md"),
   });
   return parseSentinelHtml(result.html);
@@ -97,5 +100,77 @@ Before :badge[hot]{tone="positive"} after.`);
     expect(thrown?.message).toContain('Unknown directive "::missing"');
     expect(thrown?.message).toContain("/project/src/content/post.md:3:1");
     expect(thrown?.loc).toEqual(expect.objectContaining({ line: 3, column: 1 }));
+  });
+
+  test("fails unregistered names when explicitly enabled", async () => {
+    const explicitStrictDirectives = createAstroDirectivesPlugin({
+      directives: ["badge"],
+      throwOnUnknownDirectives: true,
+    });
+
+    await expect(compile(":missing[text]", [explicitStrictDirectives])).rejects.toThrowError(
+      'Unknown directive ":missing"',
+    );
+  });
+
+  test("ignores every unregistered directive form when configured", async () => {
+    const lenientDirectives = createAstroDirectivesPlugin({
+      directives: ["badge"],
+      throwOnUnknownDirectives: false,
+    });
+    const result = await compile(
+      `:::external
+container
+:::
+
+::external
+
+:external[text]
+
+:badge[registered]`,
+      [lenientDirectives],
+    );
+
+    expect(components(result).map((item) => item.directive.name)).toEqual(["badge"]);
+  });
+
+  test("allows other plugins to handle unregistered directives when configured", async () => {
+    const externalPlugin = defineMdastPlugin({
+      name: "external-directive",
+      textDirective(node, context) {
+        if (node.name !== "external") return;
+        context.setProperty(node, "data", {
+          ...node.data,
+          hName: "span",
+          hProperties: { "data-external": "true" },
+        });
+      },
+    });
+    const lenientDirectives = createAstroDirectivesPlugin({
+      directives: ["badge"],
+      throwOnUnknownDirectives: false,
+    });
+
+    const result = await compile(":external[other plugin] and :badge[registered] and ::unhandled", [
+      externalPlugin,
+      lenientDirectives,
+    ]);
+
+    expect(result).toContainEqual(
+      expect.objectContaining({
+        type: "html",
+        value: expect.stringContaining('<span data-external="true">other plugin</span>'),
+      }),
+    );
+    expect(components(result).map((item) => item.directive.name)).toEqual(["badge"]);
+  });
+
+  test("rejects a non-boolean unknown-directive option", () => {
+    expect(() =>
+      createAstroDirectivesPlugin({
+        directives: [],
+        throwOnUnknownDirectives: "no" as unknown as boolean,
+      }),
+    ).toThrowError(/throwOnUnknownDirectives must be a boolean/);
   });
 });
