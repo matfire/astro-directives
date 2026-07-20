@@ -21,7 +21,9 @@ describe("Astro integration configuration", () => {
     });
     const addContentEntryType = vi.fn<(entryType: unknown) => void>();
     const setup = astroDirectives({
-      components: { callout: "./src/components/Callout.astro" },
+      components: {
+        callout: { component: "./src/components/Callout.astro", type: "container" },
+      },
     }).hooks["astro:config:setup"] as SetupHook;
 
     setup({ config, updateConfig, addContentEntryType });
@@ -58,5 +60,34 @@ describe("Astro integration configuration", () => {
         throwOnUnknownDirectives: "no" as unknown as boolean,
       }),
     ).toThrowError(/throwOnUnknownDirectives must be a boolean/);
+  });
+
+  test("requires component descriptors", () => {
+    expect(() =>
+      astroDirectives({
+        components: { callout: "./src/components/Callout.astro" as never },
+      }),
+    ).toThrowError(/must be an object with component and type properties/);
+  });
+
+  test("rejects invalid component imports", () => {
+    expect(() =>
+      astroDirectives({
+        components: { callout: { component: "", type: "container" } },
+      }),
+    ).toThrowError(/must be a non-empty import string or URL/);
+  });
+
+  test("rejects invalid directive types", () => {
+    expect(() =>
+      astroDirectives({
+        components: {
+          callout: {
+            component: "./src/components/Callout.astro",
+            type: "block" as "container",
+          },
+        },
+      }),
+    ).toThrowError(/must have type "container", "leaf", or "text"/);
   });
 });

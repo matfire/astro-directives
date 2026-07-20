@@ -7,18 +7,16 @@ import {
   type MdastVisitorContext,
 } from "satteri";
 
-import {
-  encodeSentinelPayload,
-  SENTINEL_ATTRIBUTE,
-  SENTINEL_TAG,
-  type DirectiveKind,
-} from "./internal/sentinel.js";
+import { encodeSentinelPayload, SENTINEL_ATTRIBUTE, SENTINEL_TAG } from "./internal/sentinel.js";
+import type { DirectiveKind } from "./types.js";
+
+export type { DirectiveKind } from "./types.js";
 
 export const PLUGIN_NAME = "@matfire/astro-directives";
 
 export interface SatteriDirectivesOptions {
-  /** Registered directive names. Registry objects use their keys. */
-  directives: Iterable<string> | Record<string, unknown>;
+  /** Maps directive names to their required directive kind. */
+  directives: Record<string, DirectiveKind>;
   /**
    * Throw when a directive is not registered. Disable this to leave unknown
    * directive nodes untouched. Defaults to `true`.
@@ -39,17 +37,29 @@ export function createAstroDirectivesPlugin(
   options: SatteriDirectivesOptions,
 ): MdastPluginDefinition {
   if (
+    !options?.directives ||
+    typeof options.directives !== "object" ||
+    Symbol.iterator in options.directives
+  ) {
+    throw new TypeError(`${PLUGIN_NAME}: directives must be a directive name-to-kind object.`);
+  }
+
+  if (
     options.throwOnUnknownDirectives !== undefined &&
     typeof options.throwOnUnknownDirectives !== "boolean"
   ) {
     throw new TypeError(`${PLUGIN_NAME}: throwOnUnknownDirectives must be a boolean.`);
   }
 
-  const names = new Set(
-    Symbol.iterator in Object(options.directives)
-      ? [...(options.directives as Iterable<string>)]
-      : Object.keys(options.directives as Record<string, unknown>),
-  );
+  for (const [name, kind] of Object.entries(options.directives)) {
+    if (!isDirectiveKind(kind)) {
+      throw new TypeError(
+        `${PLUGIN_NAME}: directive ${JSON.stringify(name)} must have type "container", "leaf", or "text".`,
+      );
+    }
+  }
+
+  const directives = new Map(Object.entries(options.directives));
   const throwOnUnknownDirectives = options.throwOnUnknownDirectives ?? true;
 
   const transform = (
@@ -57,9 +67,13 @@ export function createAstroDirectivesPlugin(
     context: MdastVisitorContext,
     kind: DirectiveKind,
   ) => {
-    if (!names.has(node.name)) {
+    const expectedKind = directives.get(node.name);
+    if (expectedKind === undefined) {
       if (throwOnUnknownDirectives) throw directiveError(node, context);
       return;
+    }
+    if (expectedKind !== kind) {
+      throw directiveKindError(node, context, kind, expectedKind);
     }
 
     context.setProperty(node, "data", {
@@ -88,6 +102,10 @@ export function createAstroDirectivesPlugin(
       return transform(node, context, "text");
     },
   });
+}
+
+function isDirectiveKind(value: unknown): value is DirectiveKind {
+  return value === "container" || value === "leaf" || value === "text";
 }
 
 function normalizeAttributes(
@@ -179,18 +197,58 @@ function directiveError(
   node: Readonly<ContainerDirective | LeafDirective | TextDirective>,
   context: MdastVisitorContext,
 ): Error {
+  const kind = directiveKind(node);
+  return createDirectiveError(
+    node,
+    context,
+    `Unknown directive ${JSON.stringify(directiveLabel(node))}. Register ${JSON.stringify(node.name)} in astroDirectives({ components: { ${JSON.stringify(node.name)}: { component: "...", type: ${JSON.stringify(kind)} } } })`,
+  );
+}
+
+function directiveKindError(
+  node: Readonly<ContainerDirective | LeafDirective | TextDirective>,
+  context: MdastVisitorContext,
+  detectedKind: DirectiveKind,
+  expectedKind: DirectiveKind,
+): Error {
+  return createDirectiveError(
+    node,
+    context,
+    `Directive ${JSON.stringify(directiveLabel(node))} has type ${JSON.stringify(detectedKind)}, but registered component ${JSON.stringify(node.name)} expects type ${JSON.stringify(expectedKind)}`,
+  );
+}
+
+function directiveLabel(
+  node: Readonly<ContainerDirective | LeafDirective | TextDirective>,
+): string {
+  const kind = directiveKind(node);
+  const prefix = kind === "container" ? ":::" : kind === "leaf" ? "::" : ":";
+  return `${prefix}${node.name}`;
+}
+
+function directiveKind(
+  node: Readonly<ContainerDirective | LeafDirective | TextDirective>,
+): DirectiveKind {
+  return node.type === "containerDirective"
+    ? "container"
+    : node.type === "leafDirective"
+      ? "leaf"
+      : "text";
+}
+
+function createDirectiveError(
+  node: Readonly<ContainerDirective | LeafDirective | TextDirective>,
+  context: MdastVisitorContext,
+  message: string,
+): Error {
   const start = node.position?.start;
   const file = context.fileURL
     ? context.fileURL.protocol === "file:"
       ? fileURLToPath(context.fileURL)
       : context.fileURL.href
     : undefined;
-  const prefix =
-    node.type === "containerDirective" ? ":::" : node.type === "leafDirective" ? "::" : ":";
   const location = [file, start?.line, start?.column].filter(Boolean).join(":");
-  const error = new Error(
-    `Unknown directive ${JSON.stringify(`${prefix}${node.name}`)}. Register ${JSON.stringify(node.name)} in astroDirectives({ components: { ... } }).${location ? `\n  at ${location}` : ""}`,
-  ) as Error & {
+  const error = new Error(`${message}.${location ? `\n  at ${location}` : ""}`) as Error & {
     loc?: { file?: string; line?: number; column?: number };
   };
   error.name = "AstroDirectivesError";

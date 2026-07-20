@@ -17,13 +17,22 @@ import {
 import { generateContentModule } from "./internal/codegen.js";
 import { parseSentinelHtml } from "./internal/sentinel.js";
 import { createAstroDirectivesPlugin, PLUGIN_NAME } from "./satteri.js";
+import type { DirectiveKind } from "./types.js";
+
+export type { DirectiveKind } from "./types.js";
+
+export interface AstroDirectiveComponent {
+  /** Astro component import. Relative paths resolve from the project root. */
+  component: string | URL;
+  /** The only directive form that may render this component. */
+  type: DirectiveKind;
+}
 
 export interface AstroDirectivesOptions {
   /**
-   * Maps directive names to Astro component imports. Relative paths are
-   * resolved from the Astro project root.
+   * Maps directive names to typed Astro component descriptors.
    */
-  components: Record<string, string | URL>;
+  components: Record<string, AstroDirectiveComponent>;
   /**
    * Throw when a directive is not registered. Disable this to leave unknown
    * directive nodes untouched. Defaults to `true`.
@@ -74,9 +83,10 @@ interface ContentEntryTypeCompat {
 export function astroDirectives(options: AstroDirectivesOptions): AstroIntegration {
   assertOptions(options);
 
-  const componentNames = Object.keys(options.components);
   const directivePlugin = createAstroDirectivesPlugin({
-    directives: componentNames,
+    directives: Object.fromEntries(
+      Object.entries(options.components).map(([name, descriptor]) => [name, descriptor.type]),
+    ),
     throwOnUnknownDirectives: options.throwOnUnknownDirectives,
   });
   let resolvedConfig: AstroConfig | undefined;
@@ -202,24 +212,38 @@ function assertOptions(options: AstroDirectivesOptions): void {
     throw new TypeError(`${PLUGIN_NAME}: a components registry is required.`);
   }
 
-  for (const [name, component] of Object.entries(options.components)) {
+  for (const [name, descriptor] of Object.entries(options.components)) {
     if (!name || !/^[A-Za-z][\w-]*$/.test(name)) {
       throw new TypeError(`${PLUGIN_NAME}: invalid directive name ${JSON.stringify(name)}.`);
     }
+    if (!descriptor || typeof descriptor !== "object" || descriptor instanceof URL) {
+      throw new TypeError(
+        `${PLUGIN_NAME}: component for directive ${JSON.stringify(name)} must be an object with component and type properties.`,
+      );
+    }
+    const { component, type } = descriptor;
     if (!(typeof component === "string" && component.length > 0) && !(component instanceof URL)) {
       throw new TypeError(
         `${PLUGIN_NAME}: component for directive ${JSON.stringify(name)} must be a non-empty import string or URL.`,
+      );
+    }
+    if (type !== "container" && type !== "leaf" && type !== "text") {
+      throw new TypeError(
+        `${PLUGIN_NAME}: directive ${JSON.stringify(name)} must have type "container", "leaf", or "text".`,
       );
     }
   }
 }
 
 function resolveComponentImports(
-  components: Record<string, string | URL>,
+  components: Record<string, AstroDirectiveComponent>,
   root: URL,
 ): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(components).map(([name, value]) => [name, resolveComponentImport(value, root)]),
+    Object.entries(components).map(([name, descriptor]) => [
+      name,
+      resolveComponentImport(descriptor.component, root),
+    ]),
   );
 }
 

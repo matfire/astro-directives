@@ -40,10 +40,10 @@ export default defineConfig({
     astroDirectives({
       throwOnUnknownDirectives: false,
       components: {
-        callout: "./src/components/Callout.astro",
-        badge: "./src/components/Badge.astro",
-        youtube: "./src/components/Youtube.astro",
-        unused: "./src/components/Unused.astro",
+        callout: { component: "./src/components/Callout.astro", type: "container" },
+        badge: { component: "./src/components/Badge.astro", type: "text" },
+        youtube: { component: "./src/components/Youtube.astro", type: "leaf" },
+        unused: { component: "./src/components/Unused.astro", type: "leaf" },
       },
     }),
   ],
