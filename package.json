@@ -1,6 +1,6 @@
 {
   "name": "@matfire/astro-directives",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Use Sätteri Markdown directives as Astro components in content collections.",
   "keywords": [
     "astro",
