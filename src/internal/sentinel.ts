@@ -2,10 +2,10 @@ import { Buffer } from "node:buffer";
 
 import type { Position } from "satteri";
 
+import type { DirectiveKind } from "../types.js";
+
 export const SENTINEL_TAG = "astro-directives-sentinel";
 export const SENTINEL_ATTRIBUTE = "data-astro-directive";
-
-export type DirectiveKind = "container" | "leaf" | "text";
 
 export interface SentinelPayload {
   kind: DirectiveKind;

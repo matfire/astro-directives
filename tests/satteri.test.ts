@@ -9,7 +9,7 @@ import {
 } from "../src/internal/sentinel.js";
 
 const directives = createAstroDirectivesPlugin({
-  directives: ["callout", "youtube", "badge"],
+  directives: { callout: "container", youtube: "leaf", badge: "text" },
 });
 
 async function compile(
@@ -128,13 +128,16 @@ Body containing disabled= text.
     }
 
     expect(thrown?.message).toContain('Unknown directive "::missing"');
+    expect(thrown?.message).toContain(
+      'components: { "missing": { component: "...", type: "leaf" } }',
+    );
     expect(thrown?.message).toContain("/project/src/content/post.md:3:1");
     expect(thrown?.loc).toEqual(expect.objectContaining({ line: 3, column: 1 }));
   });
 
   test("fails unregistered names when explicitly enabled", async () => {
     const explicitStrictDirectives = createAstroDirectivesPlugin({
-      directives: ["badge"],
+      directives: { badge: "text" },
       throwOnUnknownDirectives: true,
     });
 
@@ -145,7 +148,7 @@ Body containing disabled= text.
 
   test("ignores every unregistered directive form when configured", async () => {
     const lenientDirectives = createAstroDirectivesPlugin({
-      directives: ["badge"],
+      directives: { badge: "text" },
       throwOnUnknownDirectives: false,
     });
     const result = await compile(
@@ -177,7 +180,7 @@ container
       },
     });
     const lenientDirectives = createAstroDirectivesPlugin({
-      directives: ["badge"],
+      directives: { badge: "text" },
       throwOnUnknownDirectives: false,
     });
 
@@ -198,9 +201,72 @@ container
   test("rejects a non-boolean unknown-directive option", () => {
     expect(() =>
       createAstroDirectivesPlugin({
-        directives: [],
+        directives: {},
         throwOnUnknownDirectives: "no" as unknown as boolean,
       }),
     ).toThrowError(/throwOnUnknownDirectives must be a boolean/);
+  });
+
+  test.each([
+    {
+      markdown: ":::badge\ncontent\n:::",
+      expected: "text",
+      detected: "container",
+      syntax: ":::badge",
+    },
+    { markdown: "::badge[label]", expected: "container", detected: "leaf", syntax: "::badge" },
+    { markdown: ":badge[label]", expected: "leaf", detected: "text", syntax: ":badge" },
+  ])(
+    "fails when $syntax is used as $detected but registered as $expected",
+    async ({ markdown, expected, detected, syntax }) => {
+      const typedDirectives = createAstroDirectivesPlugin({
+        directives: { badge: expected as "container" | "leaf" | "text" },
+      });
+
+      let thrown: (Error & { loc?: { file?: string; line?: number; column?: number } }) | undefined;
+      try {
+        await compile(markdown, [typedDirectives]);
+      } catch (error) {
+        thrown = error as typeof thrown;
+      }
+
+      expect(thrown?.name).toBe("AstroDirectivesError");
+      expect(thrown?.message).toContain(`Directive ${JSON.stringify(syntax)}`);
+      expect(thrown?.message).toContain(`has type ${JSON.stringify(detected)}`);
+      expect(thrown?.message).toContain(`expects type ${JSON.stringify(expected)}`);
+      expect(thrown?.message).toContain("/project/src/content/post.md:1:1");
+      expect(thrown?.loc).toEqual({
+        file: "/project/src/content/post.md",
+        line: 1,
+        column: 1,
+      });
+    },
+  );
+
+  test("always fails registered type mismatches when unknown directives are allowed", async () => {
+    const lenientDirectives = createAstroDirectivesPlugin({
+      directives: { badge: "container" },
+      throwOnUnknownDirectives: false,
+    });
+
+    await expect(compile(":badge[text]", [lenientDirectives])).rejects.toThrowError(
+      /expects type "container"/,
+    );
+  });
+
+  test("requires a name-to-kind directive registry", () => {
+    expect(() =>
+      createAstroDirectivesPlugin({
+        directives: ["badge"] as unknown as Record<string, "text">,
+      }),
+    ).toThrowError(/directives must be a directive name-to-kind object/);
+  });
+
+  test("rejects invalid directive kinds", () => {
+    expect(() =>
+      createAstroDirectivesPlugin({
+        directives: { badge: "inline" as "text" },
+      }),
+    ).toThrowError(/must have type "container", "leaf", or "text"/);
   });
 });
