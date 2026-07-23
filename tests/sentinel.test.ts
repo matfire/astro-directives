@@ -44,6 +44,12 @@ describe("sentinel parser", () => {
       parseSentinelHtml(`</${SENTINEL_TAG}>`, new URL("file:///project/post.md")),
     ).toThrowError(/unexpected closing element/);
   });
+
+  test("rejects malformed raw sentinel elements", () => {
+    expect(() => parseSentinelHtml(`<${SENTINEL_TAG}>`)).toThrowError(
+      /contains an invalid internal element/,
+    );
+  });
 });
 
 describe("content module code generation", () => {

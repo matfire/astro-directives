@@ -109,27 +109,20 @@ export function parseSentinelHtml(html: string, fileUrl?: URL): Segment[] {
     );
   }
 
-  if (html.includes(`<${SENTINEL_TAG}`) || html.includes(`</${SENTINEL_TAG}`)) {
-    // Every valid sentinel was consumed above, so a remaining tag is malformed
-    // only if it survived inside a static segment.
-    const leftover = root.some((segment) =>
-      segment.type === "html"
-        ? segment.value.includes(SENTINEL_TAG)
-        : containsSentinelText(segment.children),
-    );
-    if (leftover) {
-      throw malformedSentinel("contains an invalid internal element", fileUrl);
-    }
+  // Every valid sentinel was consumed above, so a raw tag that survived inside
+  // a static segment is malformed. Escaped tags are ordinary rendered content.
+  if (containsSentinelElement(root)) {
+    throw malformedSentinel("contains an invalid internal element", fileUrl);
   }
 
   return root;
 }
 
-function containsSentinelText(segments: Segment[]): boolean {
+function containsSentinelElement(segments: Segment[]): boolean {
   return segments.some((segment) =>
     segment.type === "html"
-      ? segment.value.includes(SENTINEL_TAG)
-      : containsSentinelText(segment.children),
+      ? segment.value.includes(`<${SENTINEL_TAG}`) || segment.value.includes(`</${SENTINEL_TAG}`)
+      : containsSentinelElement(segment.children),
   );
 }
 
