@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { createAstroDirectivesPlugin } from "../src/satteri.js";
 import {
   parseSentinelHtml,
+  SENTINEL_TAG,
   type DirectiveSegment,
   type Segment,
 } from "../src/internal/sentinel.js";
@@ -117,6 +118,26 @@ Body containing disabled= text.
       expect.objectContaining({ value: "one" }),
       expect.objectContaining({ value: "two" }),
     ]);
+  });
+
+  test("preserves escaped sentinel examples alongside directives", async () => {
+    const result = await compile(`:::callout
+Rendered directive.
+:::
+
+\`\`\`html
+<${SENTINEL_TAG}>
+example
+</${SENTINEL_TAG}>
+\`\`\``);
+
+    expect(components(result).map((item) => item.directive.name)).toEqual(["callout"]);
+    expect(result).toContainEqual(
+      expect.objectContaining({
+        type: "html",
+        value: expect.stringContaining(`&lt;${SENTINEL_TAG}&gt;`),
+      }),
+    );
   });
 
   test("fails unregistered names with the Markdown location", async () => {
