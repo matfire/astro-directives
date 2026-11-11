@@ -1,6 +1,8 @@
 ---
 import { getCollection, render } from 'astro:content'
 
+import * as direct from '../notes/direct.md'
+
 const [post] = await getCollection('posts')
 if (!post) throw new Error('Fixture post was not loaded')
 const { Content, headings } = await render(post)
@@ -11,5 +13,8 @@ const { Content, headings } = await render(post)
   <body>
     <p id="heading-count">{headings.length}</p>
     <Content />
+    <section id="direct" data-title={direct.frontmatter.title} data-raw={direct.rawContent().trim()}>
+      <direct.Content />
+    </section>
   </body>
 </html>

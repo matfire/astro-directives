@@ -19,6 +19,10 @@ const externalDirective = defineMdastPlugin({
 });
 
 export default defineConfig({
+  image: {
+    // tests/astro.test.ts serves the remote image from this origin.
+    remotePatterns: [{ protocol: "http", hostname: "localhost", port: "41739" }],
+  },
   vite: {
     resolve: {
       alias: {
@@ -38,7 +42,8 @@ export default defineConfig({
   },
   integrations: [
     astroDirectives({
-      throwOnUnknownDirectives: false,
+      // The fixture's `:external` directive is unregistered on purpose.
+      throwOnUnknownDirectives: process.env.FIXTURE_THROW_ON_UNKNOWN === "true",
       components: {
         callout: { component: "./src/components/Callout.astro", type: "container" },
         badge: { component: "./src/components/Badge.astro", type: "text" },

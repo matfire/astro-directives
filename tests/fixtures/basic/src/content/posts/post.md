@@ -17,3 +17,14 @@ const highlighted = true;
 ```
 
 ![Pixel](./pixel.svg)
+
+![Remote](http://localhost:41739/remote.png)
+
+::::callout{type="outer"}
+
+- Outer **list item**
+
+:::callout{type="inner"}
+Inner `code`
+:::
+::::

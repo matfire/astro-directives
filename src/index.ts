@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { isAbsolute } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   createSatteriMarkdownProcessor,
@@ -50,6 +51,27 @@ const CONTENT_MODULE_TYPES = `declare module 'astro:content' {
   }
 }`;
 
+// Astro imports the module that renders a Markdown content collection entry
+// as `<file>.md?astroMarkdownContentEntry` (since 7.3.7). Markdown pages and
+// direct `.md` imports use the bare path, and the other content flags
+// (`astroPropagatedAssets`, `astroRenderContent`, ...) are wrappers that Astro
+// generates itself, so this flag is the only id this package takes over.
+const MARKDOWN_CONTENT_ENTRY_FLAG = "astroMarkdownContentEntry";
+const CONTENT_ENTRY_ID = new RegExp(`\\.md\\?(?:.*&)?${MARKDOWN_CONTENT_ENTRY_FLAG}(?:&|=|$)`);
+// Mirrors Vite's special queries: `?raw`, `?url` and `?direct` ask for the
+// file itself, never for a rendered module.
+const SPECIAL_QUERY = /(?:\?|&)(?:url|raw|direct)(?:&|$)/;
+const FIRST_ASTRO_WITH_ENTRY_FLAG = [7, 3, 7] as const;
+
+interface RenderModule {
+  code: string;
+  map: { mappings: "" };
+  meta: {
+    astro: ReturnType<typeof createDefaultAstroMetadata>;
+    vite: { lang: "ts" };
+  };
+}
+
 // Astro 7's integration runtime exposes this hook even though the public
 // BaseIntegrationHooks type does not yet declare it.
 interface ContentEntryTypeCompat {
@@ -71,7 +93,7 @@ interface ContentEntryTypeCompat {
     contents: string;
     fileUrl: URL;
     viteId: string;
-  }): unknown | Promise<unknown>;
+  }): RenderModule | undefined | Promise<RenderModule | undefined>;
   contentModuleTypes?: string;
   handlePropagation?: boolean;
 }
@@ -92,12 +114,66 @@ export function astroDirectives(options: AstroDirectivesOptions): AstroIntegrati
   let resolvedConfig: AstroConfig | undefined;
   let renderer: MarkdownRenderer | undefined;
   let componentImports: Record<string, string> = {};
+  // Ids whose module was produced by this package's `load` hook.
+  const loadedIds = new Set<string>();
+  const legacyBareEntryIds = importsContentEntriesByBarePath();
+
+  async function renderContentEntry(fileUrl: URL, viteId: string): Promise<RenderModule> {
+    if (!resolvedConfig) {
+      throw new Error(
+        `${PLUGIN_NAME}: Astro configuration was not resolved before rendering ${viteId}.`,
+      );
+    }
+
+    const source = await readFile(fileUrl, "utf8");
+    const parsed = parseFrontmatter(source, {
+      frontmatter: "empty-with-spaces",
+    });
+
+    assertSatteri(resolvedConfig.markdown.processor);
+    const processorOptions = resolvedConfig.markdown.processor.options;
+    renderer ??= await createSatteriMarkdownProcessor({
+      image: resolvedConfig.image,
+      syntaxHighlight: resolvedConfig.markdown.syntaxHighlight,
+      shikiConfig: resolvedConfig.markdown.shikiConfig,
+      gfm: resolvedConfig.markdown.gfm,
+      smartypants: resolvedConfig.markdown.smartypants,
+      mdastPlugins: [...processorOptions.mdastPlugins, directivePlugin],
+      hastPlugins: [...processorOptions.hastPlugins],
+      features: { ...processorOptions.features },
+    });
+
+    const rendered = await renderer.render(parsed.content, {
+      fileURL: fileUrl,
+      frontmatter: parsed.frontmatter,
+    });
+    const segments = parseSentinelHtml(rendered.code, fileUrl);
+    const code = generateContentModule({
+      componentImports,
+      fileUrl,
+      frontmatter: rendered.metadata.frontmatter,
+      headings: rendered.metadata.headings,
+      html: rendered.code,
+      localImagePaths: rendered.metadata.localImagePaths,
+      remoteImagePaths: rendered.metadata.remoteImagePaths,
+      segments,
+    });
+
+    return {
+      code,
+      map: { mappings: "" },
+      meta: {
+        astro: createDefaultAstroMetadata(),
+        vite: { lang: "ts" },
+      },
+    };
+  }
 
   return {
     name: PLUGIN_NAME,
     hooks: {
       "astro:config:setup": (setupParams) => {
-        const { config } = setupParams;
+        const { config, updateConfig } = setupParams;
         const { addContentEntryType } = setupParams as typeof setupParams & {
           addContentEntryType(type: ContentEntryTypeCompat): void;
         };
@@ -106,6 +182,47 @@ export function astroDirectives(options: AstroDirectivesOptions): AstroIntegrati
 
         componentImports = resolveComponentImports(options.components, config.root);
         renderer = undefined;
+        loadedIds.clear();
+
+        updateConfig({
+          vite: {
+            plugins: [
+              {
+                name: `${PLUGIN_NAME}:content-entry`,
+                // Astro only dispatches `getRenderModule` from a transform
+                // whose filter requires the id to END in the extension, so it
+                // never fires for `.md?astroMarkdownContentEntry` and the
+                // built-in `astro:markdown` plugin renders the entry without
+                // the directive plugin. Produce the module here instead.
+                //
+                // `load` rather than `transform`: a transform would run after
+                // `astro:markdown` has already rendered the file once (and
+                // thrown away every directive), would depend on that render
+                // succeeding, and would only replace its output. Claiming the
+                // id in `load` renders each entry exactly once. `astro:markdown`
+                // is `enforce: "pre"` too and is registered before integration
+                // plugins, so plugin-level ordering alone would lose the race;
+                // the hook-level `order: "pre"` sorts this `load` ahead of
+                // every `load` hook that does not ask for the same.
+                enforce: "pre",
+                load: {
+                  order: "pre",
+                  filter: { id: { include: CONTENT_ENTRY_ID, exclude: SPECIAL_QUERY } },
+                  async handler(this: { addWatchFile(file: string): void }, id: string) {
+                    if (!isMarkdownContentEntryId(id)) return;
+                    const fileId = id.slice(0, id.indexOf("?"));
+                    // The source is read from disk rather than handed over by
+                    // Vite, so register it for rebuilds explicitly.
+                    this.addWatchFile(fileId);
+                    const module = await renderContentEntry(pathToFileURL(fileId), id);
+                    loadedIds.add(id);
+                    return module;
+                  },
+                },
+              },
+            ],
+          },
+        });
 
         addContentEntryType({
           extensions: [".md"],
@@ -123,58 +240,22 @@ export function astroDirectives(options: AstroDirectivesOptions): AstroIntegrati
           },
           contentModuleTypes: CONTENT_MODULE_TYPES,
           handlePropagation: true,
+          // Kept so the entry type stays complete: should Astro dispatch this
+          // hook for query-suffixed ids again, both paths must agree.
           async getRenderModule({ fileUrl, viteId }) {
-            if (!resolvedConfig) {
-              throw new Error(
-                `${PLUGIN_NAME}: Astro configuration was not resolved before rendering ${viteId}.`,
-              );
+            if (!isMarkdownContentEntryId(viteId)) {
+              // A bare `.md` id is a Markdown page or a direct import, which
+              // belong to Astro's own pipeline. Older Astro versions use it
+              // for content entries as well and cannot tell them apart.
+              if (!legacyBareEntryIds) return undefined;
+            } else if (loadedIds.has(viteId)) {
+              // The `load` hook above already produced this module; leaving
+              // the transform a no-op keeps the two paths from rendering twice.
+              return undefined;
             }
-
-            // Astro's normal Markdown loader runs before content transforms, so
-            // `contents` may already be JavaScript here. Read the source to keep
-            // this content entry renderer independent from the page/import path.
-            const source = await readFile(fileUrl, "utf8");
-            const parsed = parseFrontmatter(source, {
-              frontmatter: "empty-with-spaces",
-            });
-
-            assertSatteri(resolvedConfig.markdown.processor);
-            const processorOptions = resolvedConfig.markdown.processor.options;
-            renderer ??= await createSatteriMarkdownProcessor({
-              image: resolvedConfig.image,
-              syntaxHighlight: resolvedConfig.markdown.syntaxHighlight,
-              shikiConfig: resolvedConfig.markdown.shikiConfig,
-              gfm: resolvedConfig.markdown.gfm,
-              smartypants: resolvedConfig.markdown.smartypants,
-              mdastPlugins: [...processorOptions.mdastPlugins, directivePlugin],
-              hastPlugins: [...processorOptions.hastPlugins],
-              features: { ...processorOptions.features },
-            });
-
-            const rendered = await renderer.render(parsed.content, {
-              fileURL: fileUrl,
-              frontmatter: parsed.frontmatter,
-            });
-            const segments = parseSentinelHtml(rendered.code, fileUrl);
-            const code = generateContentModule({
-              componentImports,
-              fileUrl,
-              frontmatter: rendered.metadata.frontmatter,
-              headings: rendered.metadata.headings,
-              html: rendered.code,
-              localImagePaths: rendered.metadata.localImagePaths,
-              remoteImagePaths: rendered.metadata.remoteImagePaths,
-              segments,
-            });
-
-            return {
-              code,
-              map: { mappings: "" },
-              meta: {
-                astro: createDefaultAstroMetadata(),
-                vite: { lang: "ts" },
-              },
-            };
+            // `contents` is whatever was loaded for the id, usually Astro's
+            // own Markdown module, so render from the source on disk.
+            return renderContentEntry(fileUrl, viteId);
           },
         });
       },
@@ -185,6 +266,31 @@ export function astroDirectives(options: AstroDirectivesOptions): AstroIntegrati
       },
     },
   };
+}
+
+function isMarkdownContentEntryId(id: string): boolean {
+  return CONTENT_ENTRY_ID.test(id) && !SPECIAL_QUERY.test(id);
+}
+
+/**
+ * Astro before 7.3.7 imports content entries by their bare path, the same id
+ * as Markdown pages and direct imports, and does dispatch `getRenderModule`
+ * for it.
+ */
+function importsContentEntriesByBarePath(): boolean {
+  let version: string;
+  try {
+    ({ version } = createRequire(import.meta.url)("astro/package.json") as { version: string });
+  } catch {
+    return false;
+  }
+
+  const parts = version.split(/[.-]/, 3).map(Number);
+  for (const [index, firstFlagged] of FIRST_ASTRO_WITH_ENTRY_FLAG.entries()) {
+    const part = parts[index] ?? 0;
+    if (part !== firstFlagged) return part < firstFlagged;
+  }
+  return false;
 }
 
 function assertDirectivesEnabled(options: SatteriResolvedOptions): void {

@@ -77,7 +77,7 @@ Attribute values remain strings. Bare attributes become `true`, and `{#id}` / `{
 
 Unregistered directive names fail the build with their Markdown location by default. Set `throwOnUnknownDirectives: false` to leave unknown directive nodes untouched. This integration does not render unknown directives itself.
 
-This initial release supports deferred `.md` content collection rendering. Markdown pages and direct `.md` imports are not part of the supported API.
+This initial release supports deferred `.md` content collection rendering. Markdown pages and direct `.md` imports are not part of the supported API; on Astro 7.3.7 and newer they are left to Astro's own Markdown pipeline.
 
 ## Standalone Sätteri plugin
 
