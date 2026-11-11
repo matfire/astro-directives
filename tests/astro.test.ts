@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -22,9 +23,9 @@ const env = {
 };
 
 // The fixture post references a remote image at this origin (see its
-// `image.remotePatterns`), served here so the tests stay offline.
+// `image.remotePatterns`), served here so the tests stay offline. The port is
+// fixed because the URL is written in the fixture's Markdown source.
 const IMAGE_PORT = 41739;
-const DEV_PORT = 41740;
 const PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
@@ -37,7 +38,12 @@ beforeAll(async () => {
     response.writeHead(200, { "content-type": "image/png", "content-length": PIXEL_PNG.length });
     response.end(PIXEL_PNG);
   });
-  await new Promise<void>((done) => imageServer.listen(IMAGE_PORT, done));
+  await new Promise<void>((done, fail) => {
+    imageServer.once("error", (error) =>
+      fail(new Error(`The fixture image server needs port ${IMAGE_PORT}.`, { cause: error })),
+    );
+    imageServer.listen(IMAGE_PORT, done);
+  });
 });
 
 afterAll(async () => {
@@ -138,9 +144,10 @@ describe("astro dev", () => {
     // `--ignore-lock` keeps the server in the foreground: without it Astro
     // detaches a background server when it detects an AI agent's shell, and
     // killing the child would leave that server running.
+    const port = await findFreePort();
     const server = spawn(
       process.execPath,
-      [astroBin, "dev", "--port", String(DEV_PORT), "--ignore-lock"],
+      [astroBin, "dev", "--port", String(port), "--ignore-lock"],
       { cwd: fixtureRoot, env, stdio: ["ignore", "pipe", "pipe"] },
     );
     let log = "";
@@ -148,7 +155,7 @@ describe("astro dev", () => {
     server.stderr.on("data", (chunk) => (log += chunk));
 
     try {
-      const origin = `http://localhost:${DEV_PORT}`;
+      const origin = `http://localhost:${port}`;
       await waitForServer(origin, () => log);
 
       const index = await (await fetch(`${origin}/`)).text();
@@ -163,6 +170,15 @@ describe("astro dev", () => {
     }
   });
 });
+
+/** Astro silently moves to the next port when the requested one is taken. */
+async function findFreePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((done) => probe.listen(0, done));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise((done) => probe.close(done));
+  return port;
+}
 
 async function waitForServer(origin: string, log: () => string): Promise<void> {
   const deadline = Date.now() + 30_000;
