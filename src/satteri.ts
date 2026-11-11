@@ -92,6 +92,10 @@ export function createAstroDirectivesPlugin(
 
   return defineMdastPlugin({
     name: PLUGIN_NAME,
+    // Sätteri 0.10+ only tracks source positions when a plugin opts in. They
+    // back the file:line:column of directive errors and the detection of
+    // explicitly assigned empty attributes.
+    options: { position: true },
     containerDirective(node, context) {
       return transform(node, context, "container");
     },

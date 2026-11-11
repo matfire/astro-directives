@@ -1,0 +1,10 @@
+---
+const { frontmatter } = Astro.props
+---
+
+<!doctype html>
+<html lang="en">
+  <body>
+    <main id="page-layout" data-title={frontmatter.title}><slot /></main>
+  </body>
+</html>
